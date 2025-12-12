@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Маркетплейс</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>Добро пожаловать в Маркетплейс</h1>
+    
+    <nav>
+        <a href="/">Главная</a> |
+        <a href="/products">Каталог товаров</a> |
+        <a href="/orders">Мои заказы</a> |
+        <a href="/my-products">Мои товары</a> |
+        <a href="/commissions">Комиссии</a> |
+        <span id="auth-links">
+            <a href="/login">Вход</a> |
+            <a href="/register">Регистрация</a>
+        </span>
+        <span id="user-info" style="display:none;">
+            <span id="username"></span> |
+            <a href="#" onclick="logout()">Выход</a>
+        </span>
+    </nav>
+    
+    <script>
+        const token = localStorage.getItem('token');
+        if (token) {
+            fetch('/api/auth/me', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.json();
+                }
+                throw new Error('Not authorized');
+            })
+            .then(data => {
+                document.getElementById('auth-links').style.display = 'none';
+                document.getElementById('user-info').style.display = 'inline';
+                document.getElementById('username').textContent = data.username;
+            })
+            .catch(() => {
+                localStorage.removeItem('token');
+            });
+        }
+        
+        function logout() {
+            localStorage.removeItem('token');
+            location.reload();
+        }
+    </script>
+</body>
+</html>
+

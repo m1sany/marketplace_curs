@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Мои товары - Маркетплейс</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>Мои товары</h1>
+    
+    <nav>
+        <a href="/">Главная</a> |
+        <a href="/products">Каталог</a> |
+        <a href="/orders">Мои заказы</a> |
+        <a href="/my-products">Мои товары</a> |
+        <a href="/commissions">Комиссии</a>
+    </nav>
+    
+    <div id="auth-message" style="display:none;">
+        <p>Для управления товарами необходимо <a href="/login">войти</a> в систему и стать продавцом</p>
+    </div>
+    
+    <h2>Добавить товар</h2>
+    <form id="productForm" style="display:none;">
+        <div>
+            <label>Название:</label>
+            <input type="text" id="name" required>
+        </div>
+        <div>
+            <label>Описание:</label>
+            <textarea id="description"></textarea>
+        </div>
+        <div>
+            <label>Цена:</label>
+            <input type="number" id="price" step="0.01" required min="0.01">
+        </div>
+        <div>
+            <label>Количество:</label>
+            <input type="number" id="quantity" required min="0">
+        </div>
+        <button type="submit">Добавить товар</button>
+    </form>
+    
+    <h2>Мои товары</h2>
+    <div id="products-list"></div>
+    
+    <div id="message"></div>
+    
+    <script>
+        const token = localStorage.getItem('token');
+        
+        async function checkSeller() {
+            if (!token) {
+                document.getElementById('auth-message').style.display = 'block';
+                return false;
+            }
+            
+            try {
+                const response = await fetch('/api/auth/me', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const user = await response.json();
+                    if (user.is_seller) {
+                        document.getElementById('productForm').style.display = 'block';
+                        return true;
+                    } else {
+                        document.getElementById('auth-message').innerHTML = '<p>Вы не являетесь продавцом. <button onclick="becomeSeller()">Стать продавцом</button></p>';
+                        document.getElementById('auth-message').style.display = 'block';
+                        return false;
+                    }
+                }
+            } catch (error) {
+                console.error(error);
+            }
+            return false;
+        }
+        
+        async function becomeSeller() {
+            try {
+                const response = await fetch('/api/auth/become-seller', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (response.ok) {
+                    location.reload();
+                }
+            } catch (error) {
+                alert('Ошибка: ' + error.message);
+            }
+        }
+        
+        async function loadMyProducts() {
+            if (!token) return;
+            
+            try {
+                const response = await fetch('/api/products', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                const allProducts = await response.json();
+                
+                const userResponse = await fetch('/api/auth/me', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                const user = await userResponse.json();
+                
+                const myProducts = allProducts.filter(p => p.seller_id === user.id);
+                
+                const productsList = document.getElementById('products-list');
+                if (myProducts.length === 0) {
+                    productsList.innerHTML = '<p>У вас пока нет товаров</p>';
+                    return;
+                }
+                
+                productsList.innerHTML = '<table border="1"><tr><th>ID</th><th>Название</th><th>Описание</th><th>Цена</th><th>Количество</th><th>Действия</th></tr>';
+                
+                myProducts.forEach(product => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${product.id}</td>
+                        <td>${product.name}</td>
+                        <td>${product.description || '-'}</td>
+                        <td>${product.price}</td>
+                        <td>${product.quantity}</td>
+                        <td>
+                            <button onclick="editProduct(${product.id})">Редактировать</button>
+                            <button onclick="deleteProduct(${product.id})">Удалить</button>
+                        </td>
+                    `;
+                    productsList.querySelector('table').appendChild(row);
+                });
+                productsList.innerHTML += '</table>';
+            } catch (error) {
+                document.getElementById('message').innerHTML = `<p style="color:red">Ошибка загрузки товаров: ${error.message}</p>`;
+            }
+        }
+        
+        document.getElementById('productForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const data = {
+                name: document.getElementById('name').value,
+                description: document.getElementById('description').value,
+                price: parseFloat(document.getElementById('price').value),
+                quantity: parseInt(document.getElementById('quantity').value)
+            };
+            
+            try {
+                const response = await fetch('/api/products', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('message').innerHTML = '<p style="color:green">Товар добавлен!</p>';
+                    document.getElementById('productForm').reset();
+                    loadMyProducts();
+                } else {
+                    document.getElementById('message').innerHTML = `<p style="color:red">Ошибка: ${result.detail}</p>`;
+                }
+            } catch (error) {
+                document.getElementById('message').innerHTML = `<p style="color:red">Ошибка: ${error.message}</p>`;
+            }
+        });
+        
+        function editProduct(productId) {
+            const name = prompt('Новое название:');
+            if (!name) return;
+            
+            const description = prompt('Новое описание:');
+            const price = prompt('Новая цена:');
+            const quantity = prompt('Новое количество:');
+            
+            const updateData = {};
+            if (name) updateData.name = name;
+            if (description !== null) updateData.description = description;
+            if (price) updateData.price = parseFloat(price);
+            if (quantity !== null) updateData.quantity = parseInt(quantity);
+            
+            fetch(`/api/products/${productId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(updateData)
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.id) {
+                    document.getElementById('message').innerHTML = '<p style="color:green">Товар обновлен!</p>';
+                    loadMyProducts();
+                } else {
+                    document.getElementById('message').innerHTML = `<p style="color:red">Ошибка: ${result.detail}</p>`;
+                }
+            })
+            .catch(error => {
+                document.getElementById('message').innerHTML = `<p style="color:red">Ошибка: ${error.message}</p>`;
+            });
+        }
+        
+        function deleteProduct(productId) {
+            if (!confirm('Удалить товар?')) return;
+            
+            fetch(`/api/products/${productId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            })
+            .then(response => {
+                if (response.status === 204) {
+                    document.getElementById('message').innerHTML = '<p style="color:green">Товар удален!</p>';
+                    loadMyProducts();
+                } else {
+                    return response.json();
+                }
+            })
+            .then(result => {
+                if (result && result.detail) {
+                    document.getElementById('message').innerHTML = `<p style="color:red">Ошибка: ${result.detail}</p>`;
+                }
+            })
+            .catch(error => {
+                document.getElementById('message').innerHTML = `<p style="color:red">Ошибка: ${error.message}</p>`;
+            });
+        }
+        
+        checkSeller().then(isSeller => {
+            if (isSeller) {
+                loadMyProducts();
+            }
+        });
+    </script>
+</body>
+</html>
+

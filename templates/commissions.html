@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Комиссии - Маркетплейс</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>Мои комиссии</h1>
+    
+    <nav>
+        <a href="/">Главная</a> |
+        <a href="/products">Каталог</a> |
+        <a href="/orders">Мои заказы</a> |
+        <a href="/my-products">Мои товары</a> |
+        <a href="/commissions">Комиссии</a>
+    </nav>
+    
+    <div id="auth-message" style="display:none;">
+        <p>Для просмотра комиссий необходимо <a href="/login">войти</a> в систему как продавец</p>
+    </div>
+    
+    <div id="commissions-list"></div>
+    
+    <div id="message"></div>
+    
+    <script>
+        const token = localStorage.getItem('token');
+        
+        if (!token) {
+            document.getElementById('auth-message').style.display = 'block';
+        } else {
+            loadCommissions();
+        }
+        
+        async function loadCommissions() {
+            try {
+                const response = await fetch('/api/commissions', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (response.status === 403) {
+                    document.getElementById('auth-message').innerHTML = '<p>Доступ только для продавцов</p>';
+                    document.getElementById('auth-message').style.display = 'block';
+                    return;
+                }
+                
+                const commissions = await response.json();
+                
+                const commissionsList = document.getElementById('commissions-list');
+                if (commissions.length === 0) {
+                    commissionsList.innerHTML = '<p>У вас пока нет комиссий</p>';
+                    return;
+                }
+                
+                let totalCommission = 0;
+                let totalSellerAmount = 0;
+                
+                commissionsList.innerHTML = '<h2>Список комиссий</h2><table border="1"><tr><th>ID</th><th>Заказ ID</th><th>Сумма заказа</th><th>Ставка комиссии</th><th>Сумма комиссии</th><th>К выплате</th><th>Дата</th></tr>';
+                
+                commissions.forEach(commission => {
+                    totalCommission += commission.commission_amount;
+                    totalSellerAmount += commission.seller_amount;
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${commission.id}</td>
+                        <td>${commission.order_id}</td>
+                        <td>${commission.amount}</td>
+                        <td>${(commission.commission_rate * 100).toFixed(1)}%</td>
+                        <td>${commission.commission_amount.toFixed(2)}</td>
+                        <td>${commission.seller_amount.toFixed(2)}</td>
+                        <td>${new Date(commission.created_at).toLocaleString()}</td>
+                    `;
+                    commissionsList.querySelector('table').appendChild(row);
+                });
+                
+                commissionsList.innerHTML += '</table>';
+                
+                const summary = document.createElement('div');
+                summary.style.marginTop = '20px';
+                summary.style.padding = '10px';
+                summary.style.border = '1px solid black';
+                summary.innerHTML = `
+                    <h3>Итого:</h3>
+                    <p><strong>Общая сумма комиссий:</strong> ${totalCommission.toFixed(2)}</p>
+                    <p><strong>Общая сумма к выплате:</strong> ${totalSellerAmount.toFixed(2)}</p>
+                `;
+                commissionsList.appendChild(summary);
+            } catch (error) {
+                document.getElementById('message').innerHTML = `<p style="color:red">Ошибка загрузки комиссий: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>
+

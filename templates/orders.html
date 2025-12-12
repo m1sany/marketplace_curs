@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Мои заказы - Маркетплейс</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>Мои заказы</h1>
+    
+    <nav>
+        <a href="/">Главная</a> |
+        <a href="/products">Каталог</a> |
+        <a href="/orders">Мои заказы</a> |
+        <a href="/my-products">Мои товары</a> |
+        <a href="/commissions">Комиссии</a>
+    </nav>
+    
+    <div id="auth-message" style="display:none;">
+        <p>Для просмотра заказов необходимо <a href="/login">войти</a> в систему</p>
+    </div>
+    
+    <div id="orders-list"></div>
+    
+    <div id="message"></div>
+    
+    <script>
+        const token = localStorage.getItem('token');
+        
+        if (!token) {
+            document.getElementById('auth-message').style.display = 'block';
+        } else {
+            loadOrders();
+        }
+        
+        async function loadOrders() {
+            try {
+                const response = await fetch('/api/orders', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                const orders = await response.json();
+                
+                const ordersList = document.getElementById('orders-list');
+                if (orders.length === 0) {
+                    ordersList.innerHTML = '<p>У вас пока нет заказов</p>';
+                    return;
+                }
+                
+                ordersList.innerHTML = '<h2>Список заказов</h2>';
+                
+                orders.forEach(order => {
+                    const orderDiv = document.createElement('div');
+                    orderDiv.style.border = '1px solid black';
+                    orderDiv.style.padding = '10px';
+                    orderDiv.style.margin = '10px 0';
+                    
+                    let itemsHtml = '<ul>';
+                    order.items.forEach(item => {
+                        itemsHtml += `<li>${item.product_name} - ${item.quantity} шт. x ${item.price} = ${item.quantity * item.price}</li>`;
+                    });
+                    itemsHtml += '</ul>';
+                    
+                    orderDiv.innerHTML = `
+                        <h3>Заказ #${order.id}</h3>
+                        <p><strong>Статус:</strong> ${order.status}</p>
+                        <p><strong>Общая сумма:</strong> ${order.total_amount}</p>
+                        <p><strong>Дата создания:</strong> ${new Date(order.created_at).toLocaleString()}</p>
+                        <p><strong>Товары:</strong></p>
+                        ${itemsHtml}
+                        ${order.status === 'pending' ? `<button onclick="completeOrder(${order.id})">Завершить заказ</button>` : ''}
+                    `;
+                    
+                    ordersList.appendChild(orderDiv);
+                });
+            } catch (error) {
+                document.getElementById('message').innerHTML = `<p style="color:red">Ошибка загрузки заказов: ${error.message}</p>`;
+            }
+        }
+        
+        function completeOrder(orderId) {
+            fetch(`/api/orders/${orderId}/complete`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.id) {
+                    document.getElementById('message').innerHTML = '<p style="color:green">Заказ завершен!</p>';
+                    loadOrders();
+                } else {
+                    document.getElementById('message').innerHTML = `<p style="color:red">Ошибка: ${result.detail}</p>`;
+                }
+            })
+            .catch(error => {
+                document.getElementById('message').innerHTML = `<p style="color:red">Ошибка: ${error.message}</p>`;
+            });
+        }
+    </script>
+</body>
+</html>
+

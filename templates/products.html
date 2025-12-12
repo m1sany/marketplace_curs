@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Каталог товаров - Маркетплейс</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>Каталог товаров</h1>
+    
+    <nav>
+        <a href="/">Главная</a> |
+        <a href="/products">Каталог</a> |
+        <a href="/orders">Мои заказы</a> |
+        <a href="/my-products">Мои товары</a> |
+        <a href="/commissions">Комиссии</a>
+    </nav>
+    
+    <div id="auth-message" style="display:none;">
+        <p>Для создания заказа необходимо <a href="/login">войти</a> в систему</p>
+    </div>
+    
+    <h2>Товары</h2>
+    <div id="products-list"></div>
+    
+    <h2>Создать заказ</h2>
+    <form id="orderForm" style="display:none;">
+        <div id="order-items"></div>
+        <button type="submit">Создать заказ</button>
+    </form>
+    
+    <div id="message"></div>
+    
+    <script>
+        const token = localStorage.getItem('token');
+        
+        if (!token) {
+            document.getElementById('auth-message').style.display = 'block';
+        } else {
+            document.getElementById('orderForm').style.display = 'block';
+        }
+        
+        async function loadProducts() {
+            try {
+                const response = await fetch('/api/products');
+                const products = await response.json();
+                
+                const productsList = document.getElementById('products-list');
+                productsList.innerHTML = '<table border="1"><tr><th>ID</th><th>Название</th><th>Описание</th><th>Цена</th><th>Количество</th><th>Продавец ID</th><th>Действие</th></tr>';
+                
+                products.forEach(product => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${product.id}</td>
+                        <td>${product.name}</td>
+                        <td>${product.description || '-'}</td>
+                        <td>${product.price}</td>
+                        <td>${product.quantity}</td>
+                        <td>${product.seller_id}</td>
+                        <td>
+                            ${token ? `<button onclick="addToOrder(${product.id}, '${product.name}', ${product.price}, ${product.quantity})">Добавить в заказ</button>` : '-'}
+                        </td>
+                    `;
+                    productsList.querySelector('table').appendChild(row);
+                });
+                productsList.innerHTML += '</table>';
+            } catch (error) {
+                document.getElementById('message').innerHTML = `<p style="color:red">Ошибка загрузки товаров: ${error.message}</p>`;
+            }
+        }
+        
+        const orderItems = {};
+        
+        function addToOrder(productId, productName, price, availableQuantity) {
+            if (!orderItems[productId]) {
+                orderItems[productId] = {
+                    name: productName,
+                    price: price,
+                    quantity: 0,
+                    available: availableQuantity
+                };
+            }
+            
+            const quantity = prompt(`Введите количество для "${productName}" (доступно: ${availableQuantity}):`);
+            if (quantity && parseInt(quantity) > 0 && parseInt(quantity) <= availableQuantity) {
+                orderItems[productId].quantity = parseInt(quantity);
+                updateOrderForm();
+            }
+        }
+        
+        function updateOrderForm() {
+            const orderItemsDiv = document.getElementById('order-items');
+            orderItemsDiv.innerHTML = '';
+            
+            Object.keys(orderItems).forEach(productId => {
+                const item = orderItems[productId];
+                if (item.quantity > 0) {
+                    const div = document.createElement('div');
+                    div.innerHTML = `
+                        <p>${item.name} - ${item.quantity} шт. x ${item.price} = ${item.quantity * item.price}
+                        <button onclick="removeFromOrder(${productId})">Удалить</button></p>
+                    `;
+                    orderItemsDiv.appendChild(div);
+                }
+            });
+        }
+        
+        function removeFromOrder(productId) {
+            delete orderItems[productId];
+            updateOrderForm();
+        }
+        
+        document.getElementById('orderForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (!token) {
+                alert('Необходимо войти в систему');
+                return;
+            }
+            
+            const items = Object.keys(orderItems)
+                .filter(id => orderItems[id].quantity > 0)
+                .map(id => ({
+                    product_id: parseInt(id),
+                    quantity: orderItems[id].quantity
+                }));
+            
+            if (items.length === 0) {
+                alert('Добавьте товары в заказ');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/orders', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ items: items })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('message').innerHTML = `<p style="color:green">Заказ создан! ID: ${result.id}, Сумма: ${result.total_amount}</p>`;
+                    Object.keys(orderItems).forEach(key => delete orderItems[key]);
+                    updateOrderForm();
+                    loadProducts();
+                } else {
+                    document.getElementById('message').innerHTML = `<p style="color:red">Ошибка: ${result.detail}</p>`;
+                }
+            } catch (error) {
+                document.getElementById('message').innerHTML = `<p style="color:red">Ошибка: ${error.message}</p>`;
+            }
+        });
+        
+        loadProducts();
+    </script>
+</body>
+</html>
+
